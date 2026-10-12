@@ -208,34 +208,39 @@ export const propertiesApi = {
     }
 
     try {
+      let imageFile: File | null = null;
       if (typeof window !== 'undefined' && data.image instanceof File) {
-        const formData = new FormData();
-        formData.append('title', data.title);
-        if (data.description) formData.append('description', data.description);
-        formData.append('address', data.address);
-        formData.append('rent_amount', String(data.rent_amount));
-        formData.append('image', data.image);
-
-        const res = await apiClient.post<Property>('/api/properties/', formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        });
-        return res.data;
-      } else {
-        // Django REST Framework ImageField expects a File or null/omitted. Sending string URLs triggers validation errors.
-        const payload: Record<string, any> = {
-          title: data.title,
-          description: data.description || '',
-          address: data.address,
-          rent_amount: data.rent_amount,
-        };
-        if (data.image === null) {
-          payload.image = null;
+        imageFile = data.image;
+      } else if (typeof data.image === 'string' && (data.image.startsWith('http://') || data.image.startsWith('https://'))) {
+        try {
+          const imgRes = await fetch(data.image);
+          if (imgRes.ok) {
+            const blob = await imgRes.blob();
+            const type = blob.type || 'image/jpeg';
+            const ext = type.split('/')[1] || 'jpg';
+            imageFile = new File([blob], `property_upload.${ext}`, { type });
+          }
+        } catch {
+          // If fetching external URL fails (e.g. CORS), gracefully proceed without crashing
+          imageFile = null;
         }
-        const res = await apiClient.post<Property>('/api/properties/', payload);
-        return res.data;
       }
+
+      const formData = new FormData();
+      formData.append('title', data.title);
+      if (data.description) formData.append('description', data.description);
+      formData.append('address', data.address);
+      formData.append('rent_amount', String(data.rent_amount));
+      if (imageFile) {
+        formData.append('image', imageFile);
+      }
+
+      const res = await apiClient.post<Property>('/api/properties/', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return res.data;
     } catch (err) {
       throw new Error(formatApiError(err));
     }
@@ -266,32 +271,38 @@ export const propertiesApi = {
     }
 
     try {
+      let imageFile: File | null = null;
       if (typeof window !== 'undefined' && data.image instanceof File) {
-        const formData = new FormData();
-        if (data.title !== undefined) formData.append('title', data.title);
-        if (data.description !== undefined) formData.append('description', data.description);
-        if (data.address !== undefined) formData.append('address', data.address);
-        if (data.rent_amount !== undefined) formData.append('rent_amount', String(data.rent_amount));
-        formData.append('image', data.image);
-
-        const res = await apiClient.patch<Property>(`/api/properties/${id}/`, formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        });
-        return res.data;
-      } else {
-        const payload: Record<string, any> = {};
-        if (data.title !== undefined) payload.title = data.title;
-        if (data.description !== undefined) payload.description = data.description;
-        if (data.address !== undefined) payload.address = data.address;
-        if (data.rent_amount !== undefined) payload.rent_amount = data.rent_amount;
-        if (data.image === null) payload.image = null;
-        // String URLs are omitted to prevent DRF ImageField "The submitted data was not a file" error
-
-        const res = await apiClient.patch<Property>(`/api/properties/${id}/`, payload);
-        return res.data;
+        imageFile = data.image;
+      } else if (typeof data.image === 'string' && (data.image.startsWith('http://') || data.image.startsWith('https://'))) {
+        try {
+          const imgRes = await fetch(data.image);
+          if (imgRes.ok) {
+            const blob = await imgRes.blob();
+            const type = blob.type || 'image/jpeg';
+            const ext = type.split('/')[1] || 'jpg';
+            imageFile = new File([blob], `property_upload.${ext}`, { type });
+          }
+        } catch {
+          imageFile = null;
+        }
       }
+
+      const formData = new FormData();
+      if (data.title !== undefined) formData.append('title', data.title);
+      if (data.description !== undefined) formData.append('description', data.description);
+      if (data.address !== undefined) formData.append('address', data.address);
+      if (data.rent_amount !== undefined) formData.append('rent_amount', String(data.rent_amount));
+      if (imageFile) {
+        formData.append('image', imageFile);
+      }
+
+      const res = await apiClient.patch<Property>(`/api/properties/${id}/`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return res.data;
     } catch (err) {
       throw new Error(formatApiError(err));
     }

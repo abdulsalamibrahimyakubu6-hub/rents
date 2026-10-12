@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Modal } from '../common/Modal';
 import { Property, PropertyInput } from '../../lib/types';
-import { Building2, MapPin, DollarSign, Upload, Trash2, Image as ImageIcon } from 'lucide-react';
+import { Building2, MapPin, DollarSign, Upload, Link, Trash2, Image as ImageIcon } from 'lucide-react';
 
 interface PropertyFormModalProps {
   isOpen: boolean;
@@ -25,7 +25,9 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
   editingProperty,
 }) => {
   const [formData, setFormData] = useState<PropertyInput>(() => getInitialFormData(editingProperty));
+  const [imageMode, setImageMode] = useState<'upload' | 'url'>('upload');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [urlInput, setUrlInput] = useState<string>('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(editingProperty?.image || null);
   const [loading, setLoading] = useState(false);
   const [prevEditing, setPrevEditing] = useState<Property | null>(editingProperty);
@@ -36,7 +38,9 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
     setPrevEditing(editingProperty);
     setFormData(getInitialFormData(editingProperty));
     setSelectedFile(null);
+    setUrlInput(typeof editingProperty?.image === 'string' ? editingProperty.image : '');
     setPreviewUrl(editingProperty?.image || null);
+    setImageMode(typeof editingProperty?.image === 'string' ? 'url' : 'upload');
   }
 
   // Cleanup object URL if created
@@ -61,11 +65,22 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
     }
   };
 
+  const handleUrlChange = (url: string) => {
+    setUrlInput(url);
+    if (previewUrl && previewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    setSelectedFile(null);
+    setPreviewUrl(url.trim() ? url.trim() : null);
+    setFormData((prev) => ({ ...prev, image: url.trim() ? url.trim() : null }));
+  };
+
   const handleRemoveImage = () => {
     if (previewUrl && previewUrl.startsWith('blob:')) {
       URL.revokeObjectURL(previewUrl);
     }
     setSelectedFile(null);
+    setUrlInput('');
     setPreviewUrl(null);
     setFormData((prev) => ({ ...prev, image: null }));
     if (fileInputRef.current) {
@@ -79,7 +94,7 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
     try {
       const submissionData: PropertyInput = {
         ...formData,
-        image: selectedFile ? selectedFile : (previewUrl ? formData.image : null),
+        image: selectedFile ? selectedFile : (urlInput.trim() ? urlInput.trim() : null),
       };
       await onSubmit(submissionData, editingProperty?.id);
       onClose();
@@ -129,80 +144,119 @@ export const PropertyFormModal: React.FC<PropertyFormModalProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Monthly Rent Amount ($) *</label>
-            <div className="relative">
-              <DollarSign className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="number"
-                step="0.01"
-                required
-                value={formData.rent_amount}
-                onChange={(e) => setFormData({ ...formData, rent_amount: e.target.value })}
-                placeholder="2500.00"
-                className="w-full pl-9 pr-4 py-2.5 text-sm bg-slate-950 border border-slate-800 rounded-xl text-slate-100 focus:border-indigo-500 focus:outline-none"
-              />
+        <div>
+          <label className="block text-xs font-semibold text-slate-300 mb-1">Monthly Rent Amount ($) *</label>
+          <div className="relative">
+            <DollarSign className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="number"
+              step="0.01"
+              required
+              value={formData.rent_amount}
+              onChange={(e) => setFormData({ ...formData, rent_amount: e.target.value })}
+              placeholder="2500.00"
+              className="w-full pl-9 pr-4 py-2.5 text-sm bg-slate-950 border border-slate-800 rounded-xl text-slate-100 focus:border-indigo-500 focus:outline-none"
+            />
+          </div>
+        </div>
+
+        {/* Property Image Section */}
+        <div className="p-3 bg-slate-950 border border-slate-800/80 rounded-xl space-y-2.5">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+              <ImageIcon className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Property Photo (Optional)</span>
+            </label>
+            <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800 text-[11px]">
+              <button
+                type="button"
+                onClick={() => setImageMode('upload')}
+                className={`px-2 py-0.5 rounded-md font-medium transition-colors ${
+                  imageMode === 'upload'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Upload File
+              </button>
+              <button
+                type="button"
+                onClick={() => setImageMode('url')}
+                className={`px-2 py-0.5 rounded-md font-medium transition-colors ${
+                  imageMode === 'url'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Image URL
+              </button>
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Property Image (Upload)</label>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleFileChange}
-              className="hidden"
-              id="property-image-upload"
-            />
-
-            {previewUrl ? (
-              <div className="relative flex items-center gap-3 p-2 bg-slate-950 border border-slate-800 rounded-xl">
-                <img
-                  src={previewUrl}
-                  alt="Property preview"
-                  className="w-12 h-12 object-cover rounded-lg border border-slate-700 bg-slate-900"
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-slate-200 truncate">
-                    {selectedFile ? selectedFile.name : 'Current property photo'}
-                  </p>
-                  <p className="text-[10px] text-slate-400">
-                    {selectedFile
-                      ? `${(selectedFile.size / 1024).toFixed(1)} KB`
-                      : 'Existing image linked'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1 pr-1">
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="p-1.5 text-slate-400 hover:text-indigo-400 rounded-lg hover:bg-slate-900 transition-colors"
-                    title="Change photo"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRemoveImage}
-                    className="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-900 transition-colors"
-                    title="Remove photo"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            ) : (
+          {imageMode === 'upload' ? (
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                className="hidden"
+                id="property-image-upload"
+              />
               <label
                 htmlFor="property-image-upload"
-                className="flex items-center justify-center gap-2 w-full py-2.5 px-3 bg-slate-950 border border-dashed border-slate-800 hover:border-indigo-500/60 rounded-xl text-slate-400 hover:text-slate-200 text-xs font-medium cursor-pointer transition-colors"
+                className="flex items-center justify-center gap-2 w-full py-2 px-3 bg-slate-900 hover:bg-slate-800/80 border border-dashed border-slate-700 hover:border-indigo-500/60 rounded-xl text-slate-300 hover:text-white text-xs font-medium cursor-pointer transition-colors"
               >
-                <Upload className="w-4 h-4 text-slate-400" />
-                <span>Upload Image File (JPG, PNG, WebP)</span>
+                <Upload className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Choose photo from device (JPG, PNG, WebP)</span>
               </label>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="relative">
+              <Link className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="url"
+                value={urlInput}
+                onChange={(e) => handleUrlChange(e.target.value)}
+                placeholder="https://images.unsplash.com/..."
+                className="w-full pl-9 pr-4 py-2 text-xs bg-slate-900 border border-slate-800 rounded-xl text-slate-100 focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+          )}
+
+          {previewUrl && (
+            <div className="flex items-center gap-3 p-2 bg-slate-900/90 border border-slate-800 rounded-lg">
+              <img
+                src={previewUrl}
+                alt="Property preview"
+                className="w-12 h-12 object-cover rounded-md border border-slate-700 bg-slate-950 shrink-0"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src =
+                    'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80';
+                }}
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-slate-200 truncate">
+                  {selectedFile ? selectedFile.name : urlInput ? 'Web Photo URL' : 'Current listing photo'}
+                </p>
+                <p className="text-[10px] text-slate-400 truncate">
+                  {selectedFile
+                    ? `${(selectedFile.size / 1024).toFixed(1)} KB`
+                    : urlInput
+                    ? urlInput
+                    : 'Image linked'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleRemoveImage}
+                className="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition-colors shrink-0"
+                title="Remove photo"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
 
         <div>
