@@ -40,7 +40,7 @@ export interface PropertyInput {
   description?: string;
   address: string;
   rent_amount: string;
-  image?: string | null;
+  image?: string | File | null;
 }
 
 export type RentalStatusEnum = 'pending' | 'active' | 'completed' | 'canceled';

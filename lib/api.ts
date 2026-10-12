@@ -47,9 +47,13 @@ export const setToken = (token: string | null) => {
 };
 
 export const getMockMode = (): boolean => {
-  if (typeof window === 'undefined') return true;
+  if (typeof window === 'undefined') return false;
   const item = localStorage.getItem('rent_api_use_mock');
-  return item === null ? true : item === 'true';
+  if (item !== null) return item === 'true';
+  if (process.env.NEXT_PUBLIC_USE_MOCK !== undefined) {
+    return process.env.NEXT_PUBLIC_USE_MOCK === 'true';
+  }
+  return false;
 };
 
 export const setMockMode = (useMock: boolean) => {
@@ -183,9 +187,19 @@ export const propertiesApi = {
   async create(data: PropertyInput): Promise<Property> {
     if (getMockMode()) {
       await delay(500);
+      let previewUrl = 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=800&q=80';
+      if (typeof window !== 'undefined' && data.image instanceof File) {
+        previewUrl = URL.createObjectURL(data.image);
+      } else if (typeof data.image === 'string' && data.image) {
+        previewUrl = data.image;
+      }
       const newProp: Property = {
         id: Date.now(),
-        ...data,
+        title: data.title,
+        description: data.description,
+        address: data.address,
+        rent_amount: data.rent_amount,
+        image: previewUrl,
         landlord: mockUser.id,
         landlord_username: mockUser.username,
       };
@@ -194,8 +208,34 @@ export const propertiesApi = {
     }
 
     try {
-      const res = await apiClient.post<Property>('/api/properties/', data);
-      return res.data;
+      if (typeof window !== 'undefined' && data.image instanceof File) {
+        const formData = new FormData();
+        formData.append('title', data.title);
+        if (data.description) formData.append('description', data.description);
+        formData.append('address', data.address);
+        formData.append('rent_amount', String(data.rent_amount));
+        formData.append('image', data.image);
+
+        const res = await apiClient.post<Property>('/api/properties/', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        return res.data;
+      } else {
+        // Django REST Framework ImageField expects a File or null/omitted. Sending string URLs triggers validation errors.
+        const payload: Record<string, any> = {
+          title: data.title,
+          description: data.description || '',
+          address: data.address,
+          rent_amount: data.rent_amount,
+        };
+        if (data.image === null) {
+          payload.image = null;
+        }
+        const res = await apiClient.post<Property>('/api/properties/', payload);
+        return res.data;
+      }
     } catch (err) {
       throw new Error(formatApiError(err));
     }
@@ -204,15 +244,54 @@ export const propertiesApi = {
   async update(id: number, data: Partial<PropertyInput>): Promise<Property> {
     if (getMockMode()) {
       await delay(500);
-      mockProperties = mockProperties.map((p) => (p.id === id ? { ...p, ...data } : p));
+      let previewUrl: string | undefined = undefined;
+      if (typeof window !== 'undefined' && data.image instanceof File) {
+        previewUrl = URL.createObjectURL(data.image);
+      } else if (typeof data.image === 'string' && data.image) {
+        previewUrl = data.image;
+      }
+      mockProperties = mockProperties.map((p) => {
+        if (p.id === id) {
+          return {
+            ...p,
+            ...data,
+            image: previewUrl !== undefined ? previewUrl : (data.image === null ? null : p.image),
+          };
+        }
+        return p;
+      });
       const updated = mockProperties.find((p) => p.id === id);
       if (!updated) throw new Error(`Property #${id} not found.`);
       return updated;
     }
 
     try {
-      const res = await apiClient.patch<Property>(`/api/properties/${id}/`, data);
-      return res.data;
+      if (typeof window !== 'undefined' && data.image instanceof File) {
+        const formData = new FormData();
+        if (data.title !== undefined) formData.append('title', data.title);
+        if (data.description !== undefined) formData.append('description', data.description);
+        if (data.address !== undefined) formData.append('address', data.address);
+        if (data.rent_amount !== undefined) formData.append('rent_amount', String(data.rent_amount));
+        formData.append('image', data.image);
+
+        const res = await apiClient.patch<Property>(`/api/properties/${id}/`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        return res.data;
+      } else {
+        const payload: Record<string, any> = {};
+        if (data.title !== undefined) payload.title = data.title;
+        if (data.description !== undefined) payload.description = data.description;
+        if (data.address !== undefined) payload.address = data.address;
+        if (data.rent_amount !== undefined) payload.rent_amount = data.rent_amount;
+        if (data.image === null) payload.image = null;
+        // String URLs are omitted to prevent DRF ImageField "The submitted data was not a file" error
+
+        const res = await apiClient.patch<Property>(`/api/properties/${id}/`, payload);
+        return res.data;
+      }
     } catch (err) {
       throw new Error(formatApiError(err));
     }
